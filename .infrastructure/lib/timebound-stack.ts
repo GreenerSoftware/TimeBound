@@ -1,0 +1,116 @@
+/* eslint-disable @typescript-eslint/ban-types */
+import * as cdk from 'aws-cdk-lib';
+import { Construct } from 'constructs';
+import {
+  BuildsBucket, WebRoutes, ZipFunction, githubActions,
+} from '@scloud/cdk-patterns';
+import { Function } from 'aws-cdk-lib/aws-lambda';
+import { HostedZone, IHostedZone } from 'aws-cdk-lib/aws-route53';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+// import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
+// import * as path from 'path';
+// import * as sqs from 'aws-cdk-lib/aws-sqs';
+
+function envVar(name: string, fallback?: string): string {
+  const value = process.env[name] || fallback;
+  if (!value) throw new Error(`Environment variable ${name} is required`);
+  return value;
+}
+
+export default class TimeboundStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
+
+    // The code that defines your stack goes here
+
+    // This only needs to be created once per account. If you already have one, you can delete this.
+    githubActions(this).ghaOidcProvider();
+
+    // You'll need a zone to create DNS records in. This will need to be referenced by a real domain name so that SSL certificate creation can be authorised.
+    // NB the DOMAIN_NAME environment variable is defined in .infrastructure/secrets/domain.sh
+    const zone = this.zone(envVar('DOMAIN_NAME'), process.env.ZONE_ID);
+
+    // A bucket to hold zip files for Lambda functions
+    // This is useful because updating a Lambda function in the infrastructure might set the Lambda code to a default placeholder.
+    // Having a bucket to store the code in means we can update the Lambda function to use the code, either here in the infrastructure build, or from the Github Actions build.
+    const builds = new BuildsBucket(this);
+
+    // Bucket to back up infrastructure build inputs/outputs
+    // This is useful for backup and for sharing build inputs between developers, but is commentsed out by default
+    // So you son't upload anything to s3 without explicity deciding this is something that's useful for you.
+    // The imports this needs are also commented out by default and you'll need PrivateBucket added to the @scloud/cdk-patterns import.
+    // new BucketDeployment(this, 'secretsDeployment', {
+    //   destinationBucket: PrivateBucket.expendable(this, 'secrets'),
+    //   sources: [Source.asset(path.join(__dirname, '../secrets'))],
+    // });
+
+    // Cloudfront function association:
+    const defaultBehavior: Partial<cloudfront.BehaviorOptions> = {
+      functionAssociations: [{
+        function: new cloudfront.Function(this, 'staticURLs', {
+          code: cloudfront.FunctionCode.fromFile({ filePath: './lib/cfFunction.js' }),
+          comment: 'Rewrite static URLs to .html so they get forwarded to s3',
+        }),
+        eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+      }],
+    };
+
+    // Create the frontend and API using Cloudfront
+    // The following calls will create variables in Github Actions that can be used to deploy the frontend and API:
+    // * API_LAMBDA - the name of the Lambda function to update when deploying the API
+    // * CLOUDFRONT_BUCKET - for uploading the frontend
+    // * CLOUDFRONT_DISTRIBUTIONID - for invalidating the Cloudfront cache
+    const api = this.api(builds);
+    WebRoutes.routes(this, 'cloudfront', { '/api/*': api }, {
+      zone,
+      domainName: envVar('DOMAIN_NAME'),
+      defaultIndex: true,
+      redirectWww: true,
+      distributionProps: {
+        defaultBehavior: defaultBehavior as cloudfront.BehaviorOptions,
+      },
+    });
+
+    // Set up OIDC access from Github Actions - this enables builds to deploy updates to the infrastructure
+    const owner = envVar('OWNER', process.env.USERNAME); // Either OWNER, or USERNAME environment variables can be used
+    const repo = envVar('REPO');
+    githubActions(this).ghaOidcRole({ owner, repo });
+  }
+
+  /**
+   * NB: creating a hosted zone is not free. You will be charged $0.50 per month for each hosted zone.
+   * @param zoneName The name of the hosted zone - this is assumed to be the same as the domain name and will be used by other constructs (e.g. for SSL certificates),
+   * @param zoneId Optional. The ID of an existing hosted zone. If you already have a hosted zone, you can pass the zoneId to this function to get a reference to it, rather than creating a new one.
+   */
+  zone(zoneName: string, zoneId?: string): IHostedZone {
+    if (zoneId) {
+      return HostedZone.fromHostedZoneAttributes(this, 'zone', {
+        hostedZoneId: zoneId,
+        zoneName,
+      });
+    }
+
+    // Fall back to creating a new HostedZone - costs $0.50 per month
+    return new HostedZone(this, 'zone', {
+      zoneName,
+    });
+  }
+
+  api(
+    builds: Bucket,
+  ): Function {
+    // Lambda for the Node API
+    const api = ZipFunction.node(this, 'api', {
+      environment: {
+      },
+      functionProps: {
+        memorySize: 3008,
+        // code: Code.fromBucket(builds, 'api.zip'), // This can be uncommented once you've run a build of the API code
+      },
+    });
+    console.log(builds.bucketName); // TEMP to pass linting
+
+    return api;
+  }
+}
