@@ -17,9 +17,15 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 const DOMAIN_NAME = 'timebound.greenersoftware.net';
 const ZONE_ID = 'Z0657472310GZQ6PZIX06';
 
-// Github
-const OWNER = 'greenersoftware';
-const REPO = 'timebound'
+// Github - set in secrets/github.sh
+// const OWNER = 'greenersoftware';
+// const REPO = 'timebound';
+
+function env(key: string): string {
+  const value = process.env[key];
+  if (!value) throw new Error(`No environment variable value for ${key}`);
+  return value;
+}
 
 export default class TimeboundStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -76,7 +82,7 @@ export default class TimeboundStack extends cdk.Stack {
     });
 
     // Set up OIDC access from Github Actions - this enables builds to deploy updates to the infrastructure
-    githubActions(this).ghaOidcRole({ owner: OWNER, repo: REPO });
+    githubActions(this).ghaOidcRole({ owner: env('OWNER'), repo: env('REPO') });
   }
 
   /**
