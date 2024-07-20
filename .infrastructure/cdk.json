@@ -1,5 +1,5 @@
 {
-  "app": "npx ts-node --prefer-ts-exts bin/timebound.ts",
+  "app": "npx tsx bin/timebound.ts",
   "watch": {
     "include": [
       "**"
