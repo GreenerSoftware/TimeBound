@@ -6,9 +6,10 @@ import { AutoScalingClient, UpdateAutoScalingGroupCommand } from "@aws-sdk/clien
 import { RDSClient, StopDBInstanceCommand } from "@aws-sdk/client-rds";
 import { slackLog } from './slack';
 
+process.env.COMPONENT = 'shutdown';
+
 const autoScalingClient = new AutoScalingClient();
 const rdsClient = new RDSClient();
-
 
 export async function handler(event: ScheduledEvent): Promise<void> {
   await slackLog(JSON.stringify(event, null, 2));
@@ -22,7 +23,7 @@ export async function handler(event: ScheduledEvent): Promise<void> {
     DesiredCapacity: 0,
   });
   const asgResponse = await autoScalingClient.send(asgCommand);
-  console.log(JSON.stringify(asgResponse  , null, 2));
+  await slackLog(JSON.stringify(asgResponse, null, 2));
 
   // stop rds
   await slackLog('Stopping RDS instance:', process.env.RDS_INSTANCE_IDENTIFIER);
@@ -30,5 +31,5 @@ export async function handler(event: ScheduledEvent): Promise<void> {
     DBInstanceIdentifier: process.env.RDS_INSTANCE_IDENTIFIER,
   });
   const rdsResponse = rdsClient.send(rdsComand);
-  console.log(JSON.stringify(rdsResponse, null, 2));
+  await slackLog(JSON.stringify(rdsResponse, null, 2));
 };

@@ -6,9 +6,10 @@ import { AutoScalingClient, UpdateAutoScalingGroupCommand } from "@aws-sdk/clien
 import { RDSClient, StartDBInstanceCommand } from "@aws-sdk/client-rds";
 import { slackLog } from './slack';
 
+process.env.COMPONENT = 'shutdown';
+
 const autoScalingClient = new AutoScalingClient();
 const rdsClient = new RDSClient();
-
 
 export async function handler(event: ScheduledEvent): Promise<void> {
   await slackLog(JSON.stringify(event, null, 2));
