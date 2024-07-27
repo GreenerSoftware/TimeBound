@@ -74,9 +74,9 @@ export default class TimeboundStack extends Stack {
     });
 
     // RDS
-    this.rds(ec2Webapp);
+    const rds = this.rds(ec2Webapp);
 
-    const policy = new Policy(this, 'ec2Scheduling', {
+    const asgPolicy = new Policy(this, 'ec2Scheduling', {
       statements: [
         new PolicyStatement({
           actions: [
@@ -91,25 +91,50 @@ export default class TimeboundStack extends Stack {
       ]
     });
 
+    const rdsPolicy = new Policy(this, 'rdsScheduling', {
+      statements: [
+        new PolicyStatement({
+          actions: [
+            'rds:StopDbInstance',
+            'rds:StartDBInstance',
+          ],
+          resources: [
+            rds.instance.instanceArn
+          ],
+          sid: 'RDSStartStop',
+        })
+      ]
+    });
 
     const shutdown = ZipFunction.node(this, 'shutdown', {
       environment: {
         AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
+        RDS_INSTANCE_IDENTIFIER: rds.instance.instanceIdentifier,
       },
       functionProps: {
         code: Code.fromBucket(builds, 'shutdown.zip'),
       }
     });
-    shutdown.role?.attachInlinePolicy(policy);
+    shutdown.role?.attachInlinePolicy(asgPolicy);
+    shutdown.role?.attachInlinePolicy(rdsPolicy);
     new ScheduledFunction(this, 'shutdownSchedule', {
-      schedule: Schedule.cron({ minute: '10', hour: '14' }), // UTC time
+      schedule: Schedule.cron({ minute: '35', hour: '14' }), // UTC time
       lambda: shutdown,
     });
 
-    const startup = ZipFunction.node(this, 'startup');
-    shutdown.role?.attachInlinePolicy(policy);
+    const startup = ZipFunction.node(this, 'startup', {
+      environment: {
+        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
+        RDS_INSTANCE_IDENTIFIER: rds.instance.instanceIdentifier,
+      },
+      functionProps: {
+        code: Code.fromBucket(builds, 'startup.zip'),
+      }
+    });
+    startup.role?.attachInlinePolicy(asgPolicy);
+    startup.role?.attachInlinePolicy(rdsPolicy);
     new ScheduledFunction(this, 'startupSchedule', {
-      schedule: Schedule.cron({ minute: '0', hour: '7' }), // UTC time
+      schedule: Schedule.cron({ minute: '35', hour: '15' }), // UTC time
       lambda: startup,
     });
 
@@ -139,7 +164,7 @@ export default class TimeboundStack extends Stack {
   /**
    * Based on: https://github.com/aws-samples/aws-cdk-examples/blob/main/typescript/rds/mysql/mysql.ts
    */
-  rds(ec2Webapp: EC2WebApp): { databaseName: string, mysqlUsername: string, endPoint: string; } {
+  rds(ec2Webapp: EC2WebApp): { databaseName: string, mysqlUsername: string, endPoint: string; instance: DatabaseInstance; } {
     const vpc = ec2Webapp.vpc;
 
     ec2Webapp.asg;
@@ -225,7 +250,7 @@ export default class TimeboundStack extends Stack {
     //   value: props.dbName!,
     // });
 
-    return { databaseName, mysqlUsername, endPoint: mysqlInstance.dbInstanceEndpointAddress };
+    return { databaseName, mysqlUsername, endPoint: mysqlInstance.dbInstanceEndpointAddress, instance: mysqlInstance };
   }
 
 }

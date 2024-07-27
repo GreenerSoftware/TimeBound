@@ -23,7 +23,7 @@ export async function handler(event: ScheduledEvent): Promise<void> {
 
   // stop rds
   const rdsComand = new StopDBInstanceCommand({
-    DBInstanceIdentifier: process.env.RDS_INSTANCE_NAME,
+    DBInstanceIdentifier: process.env.RDS_INSTANCE_IDENTIFIER,
   });
   rdsClient.send(rdsComand);
 
