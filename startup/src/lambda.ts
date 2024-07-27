@@ -29,6 +29,6 @@ export async function handler(event: ScheduledEvent): Promise<void> {
   const rdsComand = new StartDBInstanceCommand({
     DBInstanceIdentifier: process.env.RDS_INSTANCE_IDENTIFIER,
   });
-  const rdsResponse = rdsClient.send(rdsComand);
+  const rdsResponse = await rdsClient.send(rdsComand);
   await slackLog('rds', JSON.stringify(rdsResponse, null, 2));
 }
