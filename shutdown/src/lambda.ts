@@ -6,7 +6,7 @@ import { AutoScalingClient, SetDesiredCapacityCommand } from "@aws-sdk/client-au
 
 const client = new AutoScalingClient();
 
-export async function handler(event: ScheduledEvent): Promise<any> {
+export async function handler(event: ScheduledEvent): Promise<void> {
   console.log(JSON.stringify(event, null, 2));
 
   // Shut down instance
@@ -16,6 +16,4 @@ export async function handler(event: ScheduledEvent): Promise<any> {
   });
   const data = await client.send(command);
   console.log(JSON.stringify(data));
-
-  return 'ok';
 }

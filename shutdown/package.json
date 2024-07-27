@@ -5,7 +5,7 @@
   "main": "src/lambda.ts",
   "scripts": {
     "local": "nodemon src/lambda.ts --local",
-    "lint": "eslint --fix src test",
+    "lint": "eslint --fix src",
     "test:integration": "mocha --import=tsx --timeout 10000 -r tsconfig-paths/register 'test/integration/**/*.spec.ts'",
     "compile": "tsc",
     "package": "mkdir -p dist && cp -r js/src dist && cp package*.json dist && cd dist && yarn --prod && zip -r function.zip ."
@@ -24,6 +24,7 @@
     "ts-node": "*",
     "tsconfig-paths": "*",
     "tsx": "*",
+    "typescript": "*",
     "typescript-eslint": "*"
   },
   "dependencies": {
