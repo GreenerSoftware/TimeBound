@@ -32,8 +32,8 @@ const ZONE_ID = 'Z0657472310GZQ6PZIX06';
 // const OWNER = 'GreenerSoftware';
 // const REPO = 'timebound';
 
-const shutdownSchedule = Schedule.cron({ minute: '10', hour: '18' }); // UTC time
-const startupSchedule = Schedule.cron({ minute: '11', hour: '18' }); // UTC time
+const startupSchedule = Schedule.cron({ minute: '00', hour: '07' }); // UTC time
+const shutdownSchedule = Schedule.cron({ minute: '00', hour: '23' }); // UTC time
 
 function env(key: string): string {
   const value = process.env[key];
@@ -86,8 +86,8 @@ export default class TimeboundStack extends Stack {
     const rds = this.rds(ec2Webapp);
 
     // Scheduling
-    this.shutdown(ec2Webapp, rds, builds, slackQueue);
     this.startup(ec2Webapp, rds, builds, slackQueue);
+    this.shutdown(ec2Webapp, rds, builds, slackQueue);
 
     // Set up OIDC access from Github Actions - this enables builds to deploy updates to the infrastructure
     githubActions(this).ghaOidcRole({ owner: env('OWNER'), repo: env('REPO') });
@@ -220,43 +220,6 @@ export default class TimeboundStack extends Stack {
     return databaseInstance;
   }
 
-  shutdown(ec2Webapp: EC2WebApp, rds: DatabaseInstance, builds: Bucket, slackQueue: Queue) {
-    const shutdown = ZipFunction.node(this, 'shutdown', {
-      environment: {
-        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
-        RDS_INSTANCE_IDENTIFIER: rds.instanceIdentifier,
-        SLACK_QUEUE_URL: slackQueue.queueUrl,
-      },
-      functionProps: {
-        code: Code.fromBucket(builds, 'shutdown.zip'),
-      }
-    });
-    slackQueue.grantSendMessages(shutdown);
-
-    // ASG permissions
-    shutdown.role?.addToPrincipalPolicy(new PolicyStatement({
-      actions: [
-        'autoscaling:UpdateAutoScalingGroup',
-        'autoscaling:SetDesiredCapacity',
-      ],
-      resources: [ec2Webapp.asg.autoScalingGroupArn],
-      sid: 'ASGStop',
-    }));
-
-    // RDS permissions
-    shutdown.role?.addToPrincipalPolicy(new PolicyStatement({
-      actions: ['rds:StopDbInstance'],
-      resources: [rds.instanceArn],
-      sid: 'RDSStop',
-    }));
-
-    // Schedule
-    new ScheduledFunction(this, 'shutdownSchedule', {
-      schedule: shutdownSchedule,
-      lambda: shutdown,
-    });
-  }
-
   startup(ec2Webapp: EC2WebApp, rds: DatabaseInstance, builds: Bucket, slackQueue: Queue) {
     const startup = ZipFunction.node(this, 'startup', {
       environment: {
@@ -291,6 +254,43 @@ export default class TimeboundStack extends Stack {
     new ScheduledFunction(this, 'startupSchedule', {
       schedule: startupSchedule,
       lambda: startup,
+    });
+  }
+
+  shutdown(ec2Webapp: EC2WebApp, rds: DatabaseInstance, builds: Bucket, slackQueue: Queue) {
+    const shutdown = ZipFunction.node(this, 'shutdown', {
+      environment: {
+        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
+        RDS_INSTANCE_IDENTIFIER: rds.instanceIdentifier,
+        SLACK_QUEUE_URL: slackQueue.queueUrl,
+      },
+      functionProps: {
+        code: Code.fromBucket(builds, 'shutdown.zip'),
+      }
+    });
+    slackQueue.grantSendMessages(shutdown);
+
+    // ASG permissions
+    shutdown.role?.addToPrincipalPolicy(new PolicyStatement({
+      actions: [
+        'autoscaling:UpdateAutoScalingGroup',
+        'autoscaling:SetDesiredCapacity',
+      ],
+      resources: [ec2Webapp.asg.autoScalingGroupArn],
+      sid: 'ASGStop',
+    }));
+
+    // RDS permissions
+    shutdown.role?.addToPrincipalPolicy(new PolicyStatement({
+      actions: ['rds:StopDbInstance'],
+      resources: [rds.instanceArn],
+      sid: 'RDSStop',
+    }));
+
+    // Schedule
+    new ScheduledFunction(this, 'shutdownSchedule', {
+      schedule: shutdownSchedule,
+      lambda: shutdown,
     });
   }
 
