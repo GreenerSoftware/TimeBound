@@ -12,7 +12,7 @@ const autoScalingClient = new AutoScalingClient();
 const rdsClient = new RDSClient();
 
 export async function handler(event: ScheduledEvent): Promise<void> {
-  await slackLog(JSON.stringify(event, null, 2));
+  await slackLog('event', JSON.stringify(event));
 
   // Shut down ec2
   await slackLog('Shutting down EC2 instances in asg:', process.env.AUTO_SCALING_GROUP_NAME);
@@ -23,7 +23,7 @@ export async function handler(event: ScheduledEvent): Promise<void> {
     DesiredCapacity: 0,
   });
   const asgResponse = await autoScalingClient.send(asgCommand);
-  await slackLog(JSON.stringify(asgResponse, null, 2));
+  await slackLog('asg', JSON.stringify(asgResponse, null, 2));
 
   // stop rds
   await slackLog('Stopping RDS instance:', process.env.RDS_INSTANCE_IDENTIFIER);
@@ -31,5 +31,5 @@ export async function handler(event: ScheduledEvent): Promise<void> {
     DBInstanceIdentifier: process.env.RDS_INSTANCE_IDENTIFIER,
   });
   const rdsResponse = rdsClient.send(rdsComand);
-  await slackLog(JSON.stringify(rdsResponse, null, 2));
+  await slackLog('rds', JSON.stringify(rdsResponse, null, 2));
 };
