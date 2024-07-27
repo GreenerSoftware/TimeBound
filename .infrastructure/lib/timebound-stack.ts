@@ -32,8 +32,8 @@ const ZONE_ID = 'Z0657472310GZQ6PZIX06';
 // const OWNER = 'GreenerSoftware';
 // const REPO = 'timebound';
 
-const shutdownSchedule = Schedule.cron({ minute: '30', hour: '16' }); // UTC time
-const startupSchedule = Schedule.cron({ minute: '00', hour: '16' }); // UTC time
+const shutdownSchedule = Schedule.cron({ minute: '10', hour: '18' }); // UTC time
+const startupSchedule = Schedule.cron({ minute: '11', hour: '18' }); // UTC time
 
 function env(key: string): string {
   const value = process.env[key];
@@ -121,7 +121,7 @@ export default class TimeboundStack extends Stack {
         SLACK_WEBHOOK: process.env.SLACK_WEBHOOK || '',
       },
       functionProps: {
-        reservedConcurrentExecutions: 1,
+        // reservedConcurrentExecutions: 1,
         code: Code.fromBucket(builds, 'slack.zip'),
       },
     });
