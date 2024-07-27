@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-auto-scaling": "*",
+    "@aws-sdk/client-rds": "*",
     "@types/aws-lambda": "*"
   }
 }
