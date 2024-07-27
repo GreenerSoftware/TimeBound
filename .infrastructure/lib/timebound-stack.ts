@@ -15,7 +15,7 @@ import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { EC2WebApp } from './EC2WebApp.js';
 import { Schedule } from 'aws-cdk-lib/aws-events';
-import { Code } from 'aws-cdk-lib/aws-lambda';
+// import { Code } from 'aws-cdk-lib/aws-lambda';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Queue } from 'aws-cdk-lib/aws-sqs';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
@@ -69,7 +69,6 @@ export default class TimeboundStack extends Stack {
         eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
       }],
     };
-    console.log(`defaultBehavior: ${defaultBehavior}`);
 
     // Cloudfront -> ALB -> ASG -> EC2
     const ec2Webapp = new EC2WebApp(this, 'alwaysOn', {
@@ -122,9 +121,10 @@ export default class TimeboundStack extends Stack {
       },
       functionProps: {
         // reservedConcurrentExecutions: 1,
-        code: Code.fromBucket(builds, 'slack.zip'),
+        // code: Code.fromBucket(builds, 'slack.zip'),
       },
     });
+    console.log('builds:', builds);
     return queue;
   }
 
@@ -228,9 +228,10 @@ export default class TimeboundStack extends Stack {
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
       functionProps: {
-        code: Code.fromBucket(builds, 'startup.zip'),
+        // code: Code.fromBucket(builds, 'startup.zip'),
       }
     });
+    console.log('builds:', builds);
     slackQueue.grantSendMessages(startup);
 
     // ASG permissions
@@ -265,9 +266,10 @@ export default class TimeboundStack extends Stack {
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
       functionProps: {
-        code: Code.fromBucket(builds, 'shutdown.zip'),
+        // code: Code.fromBucket(builds, 'shutdown.zip'),
       }
     });
+    console.log('builds:', builds);
     slackQueue.grantSendMessages(shutdown);
 
     // ASG permissions
