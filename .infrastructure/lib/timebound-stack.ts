@@ -1,13 +1,21 @@
-/* eslint-disable @typescript-eslint/ban-types */
-import * as cdk from 'aws-cdk-lib';
+
 import { Construct } from 'constructs';
 import {
-  BuildsBucket, WebRoutes, ZipFunction, githubActions,
+  BuildsBucket,
+  githubActions,
+  ScheduledFunction,
+  ZipFunction,
 } from '@scloud/cdk-patterns';
-import { Function } from 'aws-cdk-lib/aws-lambda';
 import { HostedZone, IHostedZone } from 'aws-cdk-lib/aws-route53';
-import { Bucket } from 'aws-cdk-lib/aws-s3';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import { InstanceClass, InstanceSize, InstanceType, Port, SecurityGroup } from 'aws-cdk-lib/aws-ec2';
+import { Credentials, DatabaseInstance, DatabaseInstanceEngine, MysqlEngineVersion, ParameterGroup } from 'aws-cdk-lib/aws-rds';
+import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
+import { Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
+import { EC2WebApp } from './EC2WebApp.js';
+import { Schedule } from 'aws-cdk-lib/aws-events';
+import { Code } from 'aws-cdk-lib/aws-lambda';
+import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
 
 // Credentials
 // PERSONAL_ACCESS_TOKEN - create a Github personal access token (classic) with 'repo' scope and set this in .infrastructure/secrets/github.sh using export PERSONAL_ACCESS_TOKEN=ghp_...
@@ -18,7 +26,7 @@ const DOMAIN_NAME = 'timebound.greenersoftware.net';
 const ZONE_ID = 'Z0657472310GZQ6PZIX06';
 
 // Github - set in secrets/github.sh
-// const OWNER = 'greenersoftware';
+// const OWNER = 'GreenerSoftware';
 // const REPO = 'timebound';
 
 function env(key: string): string {
@@ -27,32 +35,20 @@ function env(key: string): string {
   return value;
 }
 
-export default class TimeboundStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+export default class TimeboundStack extends Stack {
+  constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
     // The code that defines your stack goes here
 
-    // This only needs to be created once per account. If you already have one, you can delete this.
+    // This only needs to be created once per account.
     githubActions(this).ghaOidcProvider();
 
-    // You'll need a zone to create DNS records in. This will need to be referenced by a real domain name so that SSL certificate creation can be authorised.
-    // NB the DOMAIN_NAME environment variable is defined in .infrastructure/secrets/domain.sh
-    const zone = this.zone(DOMAIN_NAME, ZONE_ID);
-
-    // A bucket to hold zip files for Lambda functions
-    // This is useful because updating a Lambda function in the infrastructure might set the Lambda code to a default placeholder.
-    // Having a bucket to store the code in means we can update the Lambda function to use the code, either here in the infrastructure build, or from the Github Actions build.
+    // Bucket for Lambda builds
     const builds = new BuildsBucket(this);
 
-    // Bucket to back up infrastructure build inputs/outputs
-    // This is useful for backup and for sharing build inputs between developers, but is commentsed out by default
-    // So you son't upload anything to s3 without explicity deciding this is something that's useful for you.
-    // The imports this needs are also commented out by default and you'll need PrivateBucket added to the @scloud/cdk-patterns import.
-    // new BucketDeployment(this, 'secretsDeployment', {
-    //   destinationBucket: PrivateBucket.expendable(this, 'secrets'),
-    //   sources: [Source.asset(path.join(__dirname, '../secrets'))],
-    // });
+    // DNS zone
+    const zone = this.zone(DOMAIN_NAME, ZONE_ID);
 
     // Cloudfront function association:
     const defaultBehavior: Partial<cloudfront.BehaviorOptions> = {
@@ -64,14 +60,10 @@ export default class TimeboundStack extends cdk.Stack {
         eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
       }],
     };
+    console.log(`defaultBehavior: ${defaultBehavior}`);
 
-    // Create the frontend and API using Cloudfront
-    // The following calls will create variables in Github Actions that can be used to deploy the frontend and API:
-    // * API_LAMBDA - the name of the Lambda function to update when deploying the API
-    // * CLOUDFRONT_BUCKET - for uploading the frontend
-    // * CLOUDFRONT_DISTRIBUTIONID - for invalidating the Cloudfront cache
-    const api = this.api(builds);
-    WebRoutes.routes(this, 'cloudfront', { '/api/*': api }, {
+    // Cloudfront -> ALB -> ASG -> EC2
+    const ec2Webapp = new EC2WebApp(this, 'alwaysOn', {
       zone,
       domainName: DOMAIN_NAME,
       defaultIndex: true,
@@ -79,6 +71,45 @@ export default class TimeboundStack extends cdk.Stack {
       distributionProps: {
         defaultBehavior: defaultBehavior as cloudfront.BehaviorOptions,
       },
+    });
+
+    // RDS
+    // this.rds(ec2Webapp);
+
+    const policy = new Policy(this, 'ec2Scheduling', {
+      statements: [
+        new PolicyStatement({
+          actions: [
+            'autoscaling:SetDesiredCapacity',
+          ],
+          resources: [
+            ec2Webapp.asg.autoScalingGroupArn
+          ],
+          sid: 'ASGStartStop',
+        })
+      ]
+    });
+
+
+    const shutdown = ZipFunction.node(this, 'shutdown', {
+      environment: {
+        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
+      },
+      functionProps: {
+        code: Code.fromBucket(builds, 'shutdown.zip'),
+      }
+    });
+    shutdown.role?.attachInlinePolicy(policy);
+    new ScheduledFunction(this, 'shutdownSchedule', {
+      schedule: Schedule.cron({ minute: '00', hour: '14' }), // UTC time
+      lambda: shutdown,
+    });
+
+    const startup = ZipFunction.node(this, 'startup');
+    shutdown.role?.attachInlinePolicy(policy);
+    new ScheduledFunction(this, 'startupSchedule', {
+      schedule: Schedule.cron({ minute: '0', hour: '7' }), // UTC time
+      lambda: startup,
     });
 
     // Set up OIDC access from Github Actions - this enables builds to deploy updates to the infrastructure
@@ -104,20 +135,96 @@ export default class TimeboundStack extends cdk.Stack {
     });
   }
 
-  api(
-    builds: Bucket,
-  ): Function {
-    // Lambda for the Node API
-    const api = ZipFunction.node(this, 'api', {
-      environment: {
-      },
-      functionProps: {
-        memorySize: 3008,
-        // code: Code.fromBucket(builds, 'api.zip'), // This can be uncommented once you've run a build of the API code
+  /**
+   * Based on: https://github.com/aws-samples/aws-cdk-examples/blob/main/typescript/rds/mysql/mysql.ts
+   */
+  rds(ec2Webapp: EC2WebApp): { databaseName: string, mysqlUsername: string, endPoint: string; } {
+    const vpc = ec2Webapp.vpc;
+
+    ec2Webapp.asg;
+
+    // Database connection details
+    const mysqlUsername = "admin";
+    const databaseName = "db";
+    const mysqlSecret = new Secret(this, 'MysqlCredentials', {
+      secretName: 'MysqlCredentials',
+      description: 'Mysql Database Crendetials',
+      generateSecretString: {
+        excludeCharacters: "\"@/\\ '",
+        generateStringKey: 'password',
+        passwordLength: 30,
+        secretStringTemplate: JSON.stringify({ username: mysqlUsername }),
       },
     });
-    console.log(builds.bucketName); // TEMP to pass linting
+    const mysqlCredentials = Credentials.fromSecret(
+      mysqlSecret,
+      mysqlUsername,
+    );
 
-    return api;
+    // Database security group
+    const dbsg = new SecurityGroup(this, 'DatabaseSecurityGroup', {
+      vpc,
+      allowAllOutbound: true,
+      description: 'Database',
+      securityGroupName: 'Database',
+    });
+    dbsg.addIngressRule(dbsg, Port.allTraffic(), 'all from self');
+    dbsg.addIngressRule(ec2Webapp.asg.connections.securityGroups[0], Port.tcpRange(3306, 3306), 'inbound from ec2 asg');
+
+    // Create database instance
+    const mysqlInstance = new DatabaseInstance(this, 'MysqlDatabase', {
+      databaseName,
+      instanceIdentifier: 'database',
+      credentials: mysqlCredentials,
+      engine: DatabaseInstanceEngine.mysql({
+        version: MysqlEngineVersion.VER_8_0_37,
+      }),
+      backupRetention: Duration.days(7),
+      allocatedStorage: 20,
+      securityGroups: [dbsg],
+      allowMajorVersionUpgrade: true,
+      autoMinorVersionUpgrade: true,
+      instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.MICRO),
+      // vpcSubnets: {
+      //   subnets: vpc.privateSubnets,
+      // },
+      vpc,
+      removalPolicy: RemovalPolicy.DESTROY,
+      storageEncrypted: true,
+      monitoringInterval: Duration.seconds(60),
+      parameterGroup: new ParameterGroup(this, 'ParameterGroup', {
+        engine: DatabaseInstanceEngine.mysql({
+          version: MysqlEngineVersion.VER_8_0_37,
+        }),
+      }),
+      // subnetGroup: new SubnetGroup(this, 'DatabaseSubnetGroup', {
+      //   vpc,
+      //   description: 'Database subnet group',
+      //   vpcSubnets: {
+      //     subnets: vpc.privateSubnets,
+      //   },
+      //   subnetGroupName: 'Database subnet group',
+      // }),
+      publiclyAccessible: false,
+    });
+    mysqlInstance.addRotationSingleUser();
+
+    // new CfnOutput(this, 'MysqlEndpoint', {
+    //   exportName: 'MysqlEndPoint',
+    //   value: mysqlInstance.dbInstanceEndpointAddress,
+    // });
+
+    // new CfnOutput(this, 'MysqlUserName', {
+    //   exportName: 'MysqlUserName',
+    //   value: mysqlUsername,
+    // });
+
+    // new CfnOutput(this, 'MysqlDbName', {
+    //   exportName: 'MysqlDbName',
+    //   value: props.dbName!,
+    // });
+
+    return { databaseName, mysqlUsername, endPoint: mysqlInstance.dbInstanceEndpointAddress };
   }
+
 }
