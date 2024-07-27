@@ -8,7 +8,7 @@ on:
     # Build when there are changes in the directory that holds the component,
     # or when this workflow file is changed
     - 'slack/**'
-    - '.github/workflows/slack-log.yml'
+    - '.github/workflows/slack.yml'
   schedule:
     # A weekly build to pick up updates and security patches for libraries
     # This should fail if there are API changes in new dependency versions
