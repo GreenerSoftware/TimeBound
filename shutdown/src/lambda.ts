@@ -2,7 +2,7 @@
 import {
   ScheduledEvent,
 } from 'aws-lambda';
-import { AutoScalingClient, SetDesiredCapacityCommand } from "@aws-sdk/client-auto-scaling";
+import { AutoScalingClient, UpdateAutoScalingGroupCommand } from "@aws-sdk/client-auto-scaling";
 
 const client = new AutoScalingClient();
 
@@ -10,10 +10,16 @@ export async function handler(event: ScheduledEvent): Promise<void> {
   console.log(JSON.stringify(event, null, 2));
 
   // Shut down instance
-  const command = new SetDesiredCapacityCommand({
+  const command = new UpdateAutoScalingGroupCommand({
     AutoScalingGroupName: process.env.AUTO_SCALING_GROUP_NAME,
+    MinSize: 0,
+    MaxSize: 0,
     DesiredCapacity: 0,
   });
+  // const command = new SetDesiredCapacityCommand({
+  //   AutoScalingGroupName: process.env.AUTO_SCALING_GROUP_NAME,
+  //   DesiredCapacity: 0,
+  // });
   const data = await client.send(command);
   console.log(JSON.stringify(data));
 }

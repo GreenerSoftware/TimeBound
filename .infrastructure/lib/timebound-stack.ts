@@ -74,12 +74,13 @@ export default class TimeboundStack extends Stack {
     });
 
     // RDS
-    // this.rds(ec2Webapp);
+    this.rds(ec2Webapp);
 
     const policy = new Policy(this, 'ec2Scheduling', {
       statements: [
         new PolicyStatement({
           actions: [
+            'autoscaling:UpdateAutoScalingGroup',
             'autoscaling:SetDesiredCapacity',
           ],
           resources: [
@@ -101,7 +102,7 @@ export default class TimeboundStack extends Stack {
     });
     shutdown.role?.attachInlinePolicy(policy);
     new ScheduledFunction(this, 'shutdownSchedule', {
-      schedule: Schedule.cron({ minute: '00', hour: '14' }), // UTC time
+      schedule: Schedule.cron({ minute: '10', hour: '14' }), // UTC time
       lambda: shutdown,
     });
 
