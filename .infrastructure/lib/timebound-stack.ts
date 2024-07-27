@@ -3,6 +3,7 @@ import { Construct } from 'constructs';
 import {
   BuildsBucket,
   githubActions,
+  QueueFunction,
   ScheduledFunction,
   ZipFunction,
 } from '@scloud/cdk-patterns';
@@ -15,7 +16,9 @@ import { Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { EC2WebApp } from './EC2WebApp.js';
 import { Schedule } from 'aws-cdk-lib/aws-events';
 import { Code } from 'aws-cdk-lib/aws-lambda';
-import { Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { Queue } from 'aws-cdk-lib/aws-sqs';
+import { Bucket } from 'aws-cdk-lib/aws-s3';
 
 // Credentials
 // PERSONAL_ACCESS_TOKEN - create a Github personal access token (classic) with 'repo' scope and set this in .infrastructure/secrets/github.sh using export PERSONAL_ACCESS_TOKEN=ghp_...
@@ -28,6 +31,9 @@ const ZONE_ID = 'Z0657472310GZQ6PZIX06';
 // Github - set in secrets/github.sh
 // const OWNER = 'GreenerSoftware';
 // const REPO = 'timebound';
+
+const shutdownSchedule = Schedule.cron({ minute: '30', hour: '16' }); // UTC time
+const startupSchedule = Schedule.cron({ minute: '00', hour: '16' }); // UTC time
 
 function env(key: string): string {
   const value = process.env[key];
@@ -49,6 +55,9 @@ export default class TimeboundStack extends Stack {
 
     // DNS zone
     const zone = this.zone(DOMAIN_NAME, ZONE_ID);
+
+    // Slack
+    const slackQueue = this.slack(builds);
 
     // Cloudfront function association:
     const defaultBehavior: Partial<cloudfront.BehaviorOptions> = {
@@ -76,67 +85,9 @@ export default class TimeboundStack extends Stack {
     // RDS
     const rds = this.rds(ec2Webapp);
 
-    const asgPolicy = new Policy(this, 'ec2Scheduling', {
-      statements: [
-        new PolicyStatement({
-          actions: [
-            'autoscaling:UpdateAutoScalingGroup',
-            'autoscaling:SetDesiredCapacity',
-          ],
-          resources: [
-            ec2Webapp.asg.autoScalingGroupArn
-          ],
-          sid: 'ASGStartStop',
-        })
-      ]
-    });
-
-    const rdsPolicy = new Policy(this, 'rdsScheduling', {
-      statements: [
-        new PolicyStatement({
-          actions: [
-            'rds:StopDbInstance',
-            'rds:StartDBInstance',
-          ],
-          resources: [
-            rds.instance.instanceArn
-          ],
-          sid: 'RDSStartStop',
-        })
-      ]
-    });
-
-    const shutdown = ZipFunction.node(this, 'shutdown', {
-      environment: {
-        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
-        RDS_INSTANCE_IDENTIFIER: rds.instance.instanceIdentifier,
-      },
-      functionProps: {
-        code: Code.fromBucket(builds, 'shutdown.zip'),
-      }
-    });
-    shutdown.role?.attachInlinePolicy(asgPolicy);
-    shutdown.role?.attachInlinePolicy(rdsPolicy);
-    new ScheduledFunction(this, 'shutdownSchedule', {
-      schedule: Schedule.cron({ minute: '35', hour: '14' }), // UTC time
-      lambda: shutdown,
-    });
-
-    const startup = ZipFunction.node(this, 'startup', {
-      environment: {
-        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
-        RDS_INSTANCE_IDENTIFIER: rds.instance.instanceIdentifier,
-      },
-      functionProps: {
-        code: Code.fromBucket(builds, 'startup.zip'),
-      }
-    });
-    startup.role?.attachInlinePolicy(asgPolicy);
-    startup.role?.attachInlinePolicy(rdsPolicy);
-    new ScheduledFunction(this, 'startupSchedule', {
-      schedule: Schedule.cron({ minute: '35', hour: '15' }), // UTC time
-      lambda: startup,
-    });
+    // Scheduling
+    this.shutdown(ec2Webapp, rds, builds, slackQueue);
+    this.startup(ec2Webapp, rds, builds, slackQueue);
 
     // Set up OIDC access from Github Actions - this enables builds to deploy updates to the infrastructure
     githubActions(this).ghaOidcRole({ owner: env('OWNER'), repo: env('REPO') });
@@ -162,9 +113,25 @@ export default class TimeboundStack extends Stack {
   }
 
   /**
+   * Component to send Slack messages for general logging.
+   */
+  slack(builds: Bucket): Queue {
+    const { queue } = QueueFunction.node(this, 'slack', {
+      environment: {
+        SLACK_WEBHOOK: process.env.SLACK_WEBHOOK || '',
+      },
+      functionProps: {
+        reservedConcurrentExecutions: 1,
+        code: Code.fromBucket(builds, 'slack.zip'),
+      },
+    });
+    return queue;
+  }
+
+  /**
    * Based on: https://github.com/aws-samples/aws-cdk-examples/blob/main/typescript/rds/mysql/mysql.ts
    */
-  rds(ec2Webapp: EC2WebApp): { databaseName: string, mysqlUsername: string, endPoint: string; instance: DatabaseInstance; } {
+  rds(ec2Webapp: EC2WebApp): DatabaseInstance {
     const vpc = ec2Webapp.vpc;
 
     ec2Webapp.asg;
@@ -198,7 +165,7 @@ export default class TimeboundStack extends Stack {
     dbsg.addIngressRule(ec2Webapp.asg.connections.securityGroups[0], Port.tcpRange(3306, 3306), 'inbound from ec2 asg');
 
     // Create database instance
-    const mysqlInstance = new DatabaseInstance(this, 'MysqlDatabase', {
+    const databaseInstance = new DatabaseInstance(this, 'MysqlDatabase', {
       databaseName,
       instanceIdentifier: 'database',
       credentials: mysqlCredentials,
@@ -233,11 +200,11 @@ export default class TimeboundStack extends Stack {
       // }),
       publiclyAccessible: false,
     });
-    mysqlInstance.addRotationSingleUser();
+    databaseInstance.addRotationSingleUser();
 
     // new CfnOutput(this, 'MysqlEndpoint', {
     //   exportName: 'MysqlEndPoint',
-    //   value: mysqlInstance.dbInstanceEndpointAddress,
+    //   value: databaseInstance.dbInstanceEndpointAddress,
     // });
 
     // new CfnOutput(this, 'MysqlUserName', {
@@ -250,7 +217,81 @@ export default class TimeboundStack extends Stack {
     //   value: props.dbName!,
     // });
 
-    return { databaseName, mysqlUsername, endPoint: mysqlInstance.dbInstanceEndpointAddress, instance: mysqlInstance };
+    return databaseInstance;
+  }
+
+  shutdown(ec2Webapp: EC2WebApp, rds: DatabaseInstance, builds: Bucket, slackQueue: Queue) {
+    const shutdown = ZipFunction.node(this, 'shutdown', {
+      environment: {
+        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
+        RDS_INSTANCE_IDENTIFIER: rds.instanceIdentifier,
+        SLACK_QUEUE_URL: slackQueue.queueUrl,
+      },
+      functionProps: {
+        code: Code.fromBucket(builds, 'shutdown.zip'),
+      }
+    });
+    slackQueue.grantSendMessages(shutdown);
+
+    // ASG permissions
+    shutdown.role?.addToPrincipalPolicy(new PolicyStatement({
+      actions: [
+        'autoscaling:UpdateAutoScalingGroup',
+        'autoscaling:SetDesiredCapacity',
+      ],
+      resources: [ec2Webapp.asg.autoScalingGroupArn],
+      sid: 'ASGStop',
+    }));
+
+    // RDS permissions
+    shutdown.role?.addToPrincipalPolicy(new PolicyStatement({
+      actions: ['rds:StopDbInstance'],
+      resources: [rds.instanceArn],
+      sid: 'RDSStop',
+    }));
+
+    // Schedule
+    new ScheduledFunction(this, 'shutdownSchedule', {
+      schedule: shutdownSchedule,
+      lambda: shutdown,
+    });
+  }
+
+  startup(ec2Webapp: EC2WebApp, rds: DatabaseInstance, builds: Bucket, slackQueue: Queue) {
+    const startup = ZipFunction.node(this, 'startup', {
+      environment: {
+        AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
+        RDS_INSTANCE_IDENTIFIER: rds.instanceIdentifier,
+        SLACK_QUEUE_URL: slackQueue.queueUrl,
+      },
+      functionProps: {
+        code: Code.fromBucket(builds, 'startup.zip'),
+      }
+    });
+    slackQueue.grantSendMessages(startup);
+
+    // ASG permissions
+    startup.role?.addToPrincipalPolicy(new PolicyStatement({
+      actions: [
+        'autoscaling:UpdateAutoScalingGroup',
+        'autoscaling:SetDesiredCapacity',
+      ],
+      resources: [ec2Webapp.asg.autoScalingGroupArn],
+      sid: 'ASGStart',
+    }));
+
+    // RDS permissions
+    startup.role?.addToPrincipalPolicy(new PolicyStatement({
+      actions: ['rds:StartDbInstance'],
+      resources: [rds.instanceArn],
+      sid: 'RDSStart',
+    }));
+
+    // Schedule
+    new ScheduledFunction(this, 'startupSchedule', {
+      schedule: startupSchedule,
+      lambda: startup,
+    });
   }
 
 }
