@@ -34,8 +34,6 @@ export async function slackLog(...messages: unknown[]): Promise<string | undefin
     } catch (e) {
       console.error((e as Error).stack);
     }
-  } else {
-    console.log('No SLACK_QUEUE_URL', body);
   }
 
   return body;
