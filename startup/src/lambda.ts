@@ -4,13 +4,14 @@ import {
 } from 'aws-lambda';
 import { AutoScalingClient, UpdateAutoScalingGroupCommand } from "@aws-sdk/client-auto-scaling";
 import { RDSClient, StartDBInstanceCommand } from "@aws-sdk/client-rds";
+import { slackLog } from './slack';
 
 const autoScalingClient = new AutoScalingClient();
 const rdsClient = new RDSClient();
 
 
 export async function handler(event: ScheduledEvent): Promise<void> {
-  console.log(JSON.stringify(event, null, 2));
+  await slackLog(JSON.stringify(event, null, 2));
 
   // Shut down ec2
   const asgCommand = new UpdateAutoScalingGroupCommand({
@@ -19,13 +20,14 @@ export async function handler(event: ScheduledEvent): Promise<void> {
     MaxSize: 1,
     DesiredCapacity: 1,
   });
-  const data = await autoScalingClient.send(asgCommand);
+  const asgResponse = await autoScalingClient.send(asgCommand);
+  await slackLog(JSON.stringify(asgResponse, null, 2));
 
-  // stop rds
+  // start rds
+  await slackLog('Starting RDS instance', process.env.RDS_INSTANCE_IDENTIFIER);
   const rdsComand = new StartDBInstanceCommand({
     DBInstanceIdentifier: process.env.RDS_INSTANCE_IDENTIFIER,
   });
-  rdsClient.send(rdsComand);
-
-  console.log(JSON.stringify(data));
+  const rdsResponse = rdsClient.send(rdsComand);
+  await slackLog(JSON.stringify(rdsResponse, null, 2));
 }
