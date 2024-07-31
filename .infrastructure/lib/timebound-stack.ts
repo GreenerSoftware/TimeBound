@@ -15,7 +15,7 @@ import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 import { Duration, RemovalPolicy, Stack, StackProps } from 'aws-cdk-lib';
 import { EC2WebApp } from './EC2WebApp.js';
 import { Schedule } from 'aws-cdk-lib/aws-events';
-// import { Code } from 'aws-cdk-lib/aws-lambda';
+import { Code } from 'aws-cdk-lib/aws-lambda';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Queue } from 'aws-cdk-lib/aws-sqs';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
@@ -120,8 +120,7 @@ export default class TimeboundStack extends Stack {
         SLACK_WEBHOOK: process.env.SLACK_WEBHOOK || '',
       },
       functionProps: {
-        // reservedConcurrentExecutions: 1,
-        // code: Code.fromBucket(builds, 'slack.zip'),
+        code: Code.fromBucket(builds, 'slack.zip'),
       },
     });
     console.log('builds:', builds);
@@ -226,7 +225,7 @@ export default class TimeboundStack extends Stack {
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
       functionProps: {
-        // code: Code.fromBucket(builds, 'startup.zip'),
+        code: Code.fromBucket(builds, 'startup.zip'),
       }
     });
     slackQueue.grantSendMessages(startup);
@@ -263,7 +262,7 @@ export default class TimeboundStack extends Stack {
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
       functionProps: {
-        // code: Code.fromBucket(builds, 'shutdown.zip'),
+        code: Code.fromBucket(builds, 'shutdown.zip'),
       }
     });
     console.log('builds:', builds);
