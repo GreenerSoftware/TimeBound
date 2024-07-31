@@ -134,8 +134,6 @@ export default class TimeboundStack extends Stack {
   rds(ec2Webapp: EC2WebApp): DatabaseInstance {
     const vpc = ec2Webapp.vpc;
 
-    ec2Webapp.asg;
-
     // Database connection details
     const mysqlUsername = "admin";
     const databaseName = "db";
@@ -177,7 +175,7 @@ export default class TimeboundStack extends Stack {
       securityGroups: [dbsg],
       allowMajorVersionUpgrade: true,
       autoMinorVersionUpgrade: true,
-      instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.MICRO),
+      instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.SMALL),
       // vpcSubnets: {
       //   subnets: vpc.privateSubnets,
       // },
@@ -231,7 +229,6 @@ export default class TimeboundStack extends Stack {
         // code: Code.fromBucket(builds, 'startup.zip'),
       }
     });
-    console.log('builds:', builds);
     slackQueue.grantSendMessages(startup);
 
     // ASG permissions
