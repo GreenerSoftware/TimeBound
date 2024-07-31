@@ -123,7 +123,6 @@ export default class TimeboundStack extends Stack {
         code: Code.fromBucket(builds, 'slack.zip'),
       },
     });
-    console.log('builds:', builds);
     return queue;
   }
 
@@ -265,7 +264,6 @@ export default class TimeboundStack extends Stack {
         code: Code.fromBucket(builds, 'shutdown.zip'),
       }
     });
-    console.log('builds:', builds);
     slackQueue.grantSendMessages(shutdown);
 
     // ASG permissions
