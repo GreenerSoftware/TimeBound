@@ -6,15 +6,14 @@ import { AutoScalingClient, UpdateAutoScalingGroupCommand } from "@aws-sdk/clien
 import { RDSClient, StartDBInstanceCommand } from "@aws-sdk/client-rds";
 import { slackLog } from './slack';
 
-process.env.COMPONENT = 'shutdown';
-
 const autoScalingClient = new AutoScalingClient();
 const rdsClient = new RDSClient();
 
 export async function handler(event: ScheduledEvent): Promise<void> {
-  await slackLog('event:', JSON.stringify(event));
+  console.log('event:', JSON.stringify(event));
 
-  // Shut down ec2
+  // Start ec2
+  await slackLog('Starting ec2 in asg:', process.env.AUTO_SCALING_GROUP_NAME);
   const asgCommand = new UpdateAutoScalingGroupCommand({
     AutoScalingGroupName: process.env.AUTO_SCALING_GROUP_NAME,
     MinSize: 1,
@@ -22,13 +21,13 @@ export async function handler(event: ScheduledEvent): Promise<void> {
     DesiredCapacity: 1,
   });
   const asgResponse = await autoScalingClient.send(asgCommand);
-  await slackLog('asg', JSON.stringify(asgResponse, null, 2));
+  if (asgResponse.$metadata.httpStatusCode !== 200) await slackLog('asg', JSON.stringify(asgResponse, null, 2));
 
-  // start rds
-  await slackLog('Starting RDS instance', process.env.RDS_INSTANCE_IDENTIFIER);
+  // Start rds
+  await slackLog('Starting RDS:', process.env.RDS_INSTANCE_IDENTIFIER);
   const rdsComand = new StartDBInstanceCommand({
     DBInstanceIdentifier: process.env.RDS_INSTANCE_IDENTIFIER,
   });
   const rdsResponse = await rdsClient.send(rdsComand);
-  await slackLog('rds', JSON.stringify(rdsResponse, null, 2));
+  if (rdsResponse.$metadata.httpStatusCode !== 200) await slackLog('rds', JSON.stringify(rdsResponse, null, 2));
 }
