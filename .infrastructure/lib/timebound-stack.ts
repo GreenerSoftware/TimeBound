@@ -32,8 +32,8 @@ const ZONE_ID = 'Z0657472310GZQ6PZIX06';
 // const OWNER = 'GreenerSoftware';
 // const REPO = 'timebound';
 
-const startupSchedule = Schedule.cron({ minute: '00', hour: '07' }); // UTC time
-const shutdownSchedule = Schedule.cron({ minute: '00', hour: '23' }); // UTC time
+const startupSchedule = Schedule.cron({ minute: '00', hour: '06' }); // UTC time -> 07:00 BST
+const shutdownSchedule = Schedule.cron({ minute: '00', hour: '22' }); // UTC time -> 23:00 BST
 
 function env(key: string): string {
   const value = process.env[key];
@@ -217,14 +217,17 @@ export default class TimeboundStack extends Stack {
   }
 
   startup(ec2Webapp: EC2WebApp, rds: DatabaseInstance, builds: Bucket, slackQueue: Queue) {
-    const startup = ZipFunction.node(this, 'startup', {
+    const component = 'startup';
+    const startup = ZipFunction.node(this, component, {
       environment: {
+        PRODUCT: this.stackName,
+        COMPONENT: component,
         AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
         RDS_INSTANCE_IDENTIFIER: rds.instanceIdentifier,
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
       functionProps: {
-        code: Code.fromBucket(builds, 'startup.zip'),
+        code: Code.fromBucket(builds, `${component}.zip`),
       }
     });
     slackQueue.grantSendMessages(startup);
@@ -254,14 +257,17 @@ export default class TimeboundStack extends Stack {
   }
 
   shutdown(ec2Webapp: EC2WebApp, rds: DatabaseInstance, builds: Bucket, slackQueue: Queue) {
-    const shutdown = ZipFunction.node(this, 'shutdown', {
+    const component = 'shutdown';
+    const shutdown = ZipFunction.node(this, component, {
       environment: {
+        PRODUCT: this.stackName,
+        COMPONENT: component,
         AUTO_SCALING_GROUP_NAME: ec2Webapp.asg.autoScalingGroupName,
         RDS_INSTANCE_IDENTIFIER: rds.instanceIdentifier,
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
       functionProps: {
-        code: Code.fromBucket(builds, 'shutdown.zip'),
+        code: Code.fromBucket(builds, `${component}.zip`),
       }
     });
     slackQueue.grantSendMessages(shutdown);
