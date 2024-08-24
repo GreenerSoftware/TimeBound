@@ -213,6 +213,11 @@ export default class TimeboundStack extends Stack {
     //   value: props.dbName!,
     // });
 
+    githubActions(this).addGhaVariable('secretName', 'rds', mysqlSecret.secretName);
+    githubActions(this).addGhaVariable('secretArn', 'rds', mysqlSecret.secretArn);
+    githubActions(this).addGhaVariable('hostname', 'rds', databaseInstance.instanceEndpoint.hostname);
+    githubActions(this).addGhaVariable('port', 'rds', `${databaseInstance.instanceEndpoint.port}`);
+
     return databaseInstance;
   }
 
