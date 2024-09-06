@@ -7,20 +7,18 @@
     "lint": "eslint --fix src test",
     "test": "mocha --import=tsx -r tsconfig-paths/register 'test/unit/**/*.spec.ts' # tsconfig-paths/register helps resolve imports in tests",
     "compile": "tsc",
-    "package": "mkdir -p dist && cp -r js/src dist && cp package*.json dist && cd dist && yarn --prod && echo $(git rev-parse --short HEAD) > COMMIT_HASH && zip -r function.zip ."
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/DownloadCreations/hairtracker"
+    "package": "mkdir -p dist && cp -r js/src dist && cp package*.json dist && cd dist && yarn --prod && zip -r function.zip ."
   },
   "author": "David Carboni",
-  "license": "UNLICENSED",
+  "license": "ISC",
   "devDependencies": {
     "@eslint/js": "*",
     "@types/aws-lambda": "*",
     "@types/chai": "*",
     "@types/mocha": "*",
     "@types/node": "*",
+    "@types/source-map-support": "*",
+    "@types/tmp": "*",
     "chai": "*",
     "eslint": "*",
     "mocha": "*",

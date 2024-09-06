@@ -1,14 +1,7 @@
 import {
-  Context, SQSBatchResponse, SQSEvent,
+  SQSBatchResponse, SQSEvent,
 } from 'aws-lambda';
 import axios from 'axios';
-import * as fs from 'fs';
-
-// Provided by the container/environment/file
-if (fs.existsSync('COMMIT_HASH')) {
-  process.env.COMMIT_HASH = fs.readFileSync('COMMIT_HASH').toString().trim();
-}
-process.env.COMMIT_HASH = process.env.COMMIT_HASH || 'development';
 
 /**
  * Process the content of an SQS message
@@ -23,9 +16,7 @@ export async function processMessage(body: string) {
 /**
  * Lambda handler to process a batch of SQS messages
  */
-export async function handler(event: SQSEvent, context: Context): Promise<SQSBatchResponse> {
-  console.log(`Executing ${context.functionName} version: ${process.env.COMMIT_HASH}`);
-
+export async function handler(event: SQSEvent): Promise<SQSBatchResponse> {
   // Process incoming message(s)
   // and note any failures
   const failedIds: string[] = [];
