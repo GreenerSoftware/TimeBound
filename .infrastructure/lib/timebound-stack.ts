@@ -74,7 +74,7 @@ export default class TimeboundStack extends Stack {
     const ec2Webapp = new EC2WebApp(this, 'alwaysOn', {
       zone,
       domainName: DOMAIN_NAME,
-      defaultIndex: true,
+      defaultIndex: false,
       redirectWww: true,
       distributionProps: {
         defaultBehavior: defaultBehavior as cloudfront.BehaviorOptions,
