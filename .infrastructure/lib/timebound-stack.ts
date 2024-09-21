@@ -44,8 +44,6 @@ export default class TimeboundStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 
-    // The code that defines your stack goes here
-
     // This only needs to be created once per account.
     githubActions(this).ghaOidcProvider();
 
@@ -58,26 +56,12 @@ export default class TimeboundStack extends Stack {
     // Slack
     const slackQueue = this.slack(builds);
 
-    // Cloudfront function association:
-    // const defaultBehavior: Partial<cloudfront.BehaviorOptions> = {
-    //   functionAssociations: [{
-    //     function: new cloudfront.Function(this, 'staticURLs', {
-    //       code: cloudfront.FunctionCode.fromFile({ filePath: './lib/cfFunction.js' }),
-    //       comment: 'Rewrite static URLs to .html so they get forwarded to s3',
-    //     }),
-    //     eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
-    //   }],
-    // };
-
     // Cloudfront -> ALB -> ASG -> EC2
     const ec2Webapp = new EC2WebApp(this, 'timeBound', {
       zone,
       domainName: DOMAIN_NAME,
       defaultIndex: false,
       redirectWww: false,
-      // distributionProps: {
-      //   defaultBehavior: defaultBehavior as cloudfront.BehaviorOptions,
-      // },
     });
 
     // RDS
