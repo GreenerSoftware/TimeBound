@@ -23,8 +23,8 @@ jobs:
     name: App static content
     runs-on: ubuntu-latest
     env:
-      bucket: ${{ vars.ALWAYS_ON_BUCKET }}
-      distributionId: ${{ vars.ALWAYS_ON_DISTRIBUTIONID }}
+      bucket: ${{ vars.TIME_BOUND_BUCKET }}
+      distributionId: ${{ vars.TIME_BOUND_DISTRIBUTIONID }}
 
     steps:
 
