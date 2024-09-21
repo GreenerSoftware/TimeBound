@@ -8,7 +8,6 @@ import {
   ZipFunction,
 } from '@scloud/cdk-patterns';
 import { HostedZone, IHostedZone } from 'aws-cdk-lib/aws-route53';
-import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import { InstanceClass, InstanceSize, InstanceType, Port, SecurityGroup } from 'aws-cdk-lib/aws-ec2';
 import { Credentials, DatabaseInstance, DatabaseInstanceEngine, MysqlEngineVersion, ParameterGroup } from 'aws-cdk-lib/aws-rds';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
@@ -60,15 +59,15 @@ export default class TimeboundStack extends Stack {
     const slackQueue = this.slack(builds);
 
     // Cloudfront function association:
-    const defaultBehavior: Partial<cloudfront.BehaviorOptions> = {
-      functionAssociations: [{
-        function: new cloudfront.Function(this, 'staticURLs', {
-          code: cloudfront.FunctionCode.fromFile({ filePath: './lib/cfFunction.js' }),
-          comment: 'Rewrite static URLs to .html so they get forwarded to s3',
-        }),
-        eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
-      }],
-    };
+    // const defaultBehavior: Partial<cloudfront.BehaviorOptions> = {
+    //   functionAssociations: [{
+    //     function: new cloudfront.Function(this, 'staticURLs', {
+    //       code: cloudfront.FunctionCode.fromFile({ filePath: './lib/cfFunction.js' }),
+    //       comment: 'Rewrite static URLs to .html so they get forwarded to s3',
+    //     }),
+    //     eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+    //   }],
+    // };
 
     // Cloudfront -> ALB -> ASG -> EC2
     const ec2Webapp = new EC2WebApp(this, 'timeBound', {
@@ -76,9 +75,9 @@ export default class TimeboundStack extends Stack {
       domainName: DOMAIN_NAME,
       defaultIndex: false,
       redirectWww: false,
-      distributionProps: {
-        defaultBehavior: defaultBehavior as cloudfront.BehaviorOptions,
-      },
+      // distributionProps: {
+      //   defaultBehavior: defaultBehavior as cloudfront.BehaviorOptions,
+      // },
     });
 
     // RDS
