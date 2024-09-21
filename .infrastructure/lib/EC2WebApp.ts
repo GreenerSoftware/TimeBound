@@ -1,5 +1,5 @@
 import { DnsValidatedCertificate } from 'aws-cdk-lib/aws-certificatemanager';
-import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
+import { CloudFrontTarget, LoadBalancerTarget } from 'aws-cdk-lib/aws-route53-targets';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 import { LoadBalancerV2Origin, S3Origin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import {
@@ -121,6 +121,11 @@ export class EC2WebApp extends Construct {
       vpc: this.vpc,
       internetFacing: true
     });
+    new ARecord(this, 'AliasRecord', {
+      zone: props.zone,
+      target: RecordTarget.fromAlias(new LoadBalancerTarget(this.alb)),
+      recordName: 'alb',
+    });
 
     // Add a listener and open up the load balancer's security group
     // to the world.
@@ -138,6 +143,7 @@ export class EC2WebApp extends Construct {
       targets: [this.asg],
       healthCheck: {
         healthyHttpCodes: "200,301,302",
+        port: '3000',
         path: '/deer-return/',
       }
     });
