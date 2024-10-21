@@ -19,6 +19,12 @@ import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Queue } from 'aws-cdk-lib/aws-sqs';
 import { Bucket } from 'aws-cdk-lib/aws-s3';
 
+// Set this to true to successfully build the infrastructure from scratch.
+// Once the first pass succeeds, trigger a build of /startup, /shutdown and /slack Lambda functions,
+// Then set this to false and update the infrastructure.
+// This is needed so that the Lambda functions can reference the built code zip files in the S3 builds bucket.
+const firstPass = false;
+
 // Credentials
 // PERSONAL_ACCESS_TOKEN - create a Github personal access token (classic) with 'repo' scope and set this in .infrastructure/secrets/github.sh using export PERSONAL_ACCESS_TOKEN=ghp_...
 // AWS_PROFILE           - if you've set up a profile to access this account, set this in .infrastructure/secrets/aws.sh using export AWS_PROFILE=...
@@ -102,7 +108,7 @@ export default class TimeboundStack extends Stack {
       environment: {
         SLACK_WEBHOOK: process.env.SLACK_WEBHOOK || '',
       },
-      functionProps: {
+      functionProps: firstPass ? undefined : {
         code: Code.fromBucket(builds, 'slack.zip'),
       },
     });
@@ -214,7 +220,7 @@ export default class TimeboundStack extends Stack {
         RDS_INSTANCE_IDENTIFIER: rds.instanceIdentifier,
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
-      functionProps: {
+      functionProps: firstPass ? undefined : {
         code: Code.fromBucket(builds, `${component}.zip`),
       }
     });
@@ -255,7 +261,7 @@ export default class TimeboundStack extends Stack {
         SLACK_QUEUE_URL: slackQueue.queueUrl,
       },
       functionProps: {
-        code: Code.fromBucket(builds, `${component}.zip`),
+        code: firstPass ? undefined : Code.fromBucket(builds, `${component}.zip`),
       }
     });
     slackQueue.grantSendMessages(shutdown);
