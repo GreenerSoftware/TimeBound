@@ -17,6 +17,7 @@ const stack = new TimeboundStack(app, 'Timebound', {
   /* Uncomment the next line if you know exactly what Account and Region you
    * want to deploy the stack to. */
   env: { account: '851725449784', region: 'eu-west-2' },
+  description: 'Timebound: this version of the app shuts down ec2 and rds instances at 23:00 and starts them up at 07:00',
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
 });
